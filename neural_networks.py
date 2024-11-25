@@ -93,11 +93,14 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
     ax_input.clear()
     ax_gradient.clear()
 
+    # Perform training steps
     for _ in range(10):
         mlp.forward(X)
         mlp.backward(X, y)
 
-    # Hidden layer features
+    step_number = frame * 10  # Track the training step
+
+    # Hidden Layer Visualization
     hidden_features = mlp.activations['A1']
     ax_hidden.scatter(
         hidden_features[:, 0],
@@ -106,34 +109,89 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
         cmap='bwr',
         alpha=0.7
     )
-    ax_hidden.set_title("Hidden Layer Features")
 
-    # Input space decision boundary
-    x_min, x_max = -3, 3
-    y_min, y_max = -3, 3
+    # Configure axis limits based on the activation function
+    if mlp.activation_fn == 'sigmoid':
+        ax_hidden.set_xlim([0, 1])
+        ax_hidden.set_ylim([0, 1])
+        ax_hidden.set_zlim([0, 1])
+    elif mlp.activation_fn == 'tanh':
+        ax_hidden.set_xlim([-1, 1])
+        ax_hidden.set_ylim([-1, 1])
+        ax_hidden.set_zlim([-1, 1])
+    elif mlp.activation_fn == 'relu':
+        max_val = np.max(hidden_features)
+        min_val = np.min(hidden_features)
+        buffer = 0.1 * (max_val - min_val)
+        ax_hidden.set_xlim([min_val - buffer, max_val + buffer])
+        ax_hidden.set_ylim([min_val - buffer, max_val + buffer])
+        ax_hidden.set_zlim([min_val - buffer, max_val + buffer])
+
+    # Generate a grid for 3D surface visualization
+    grid_ran = np.linspace(-3, 3, 20)
+    X_grid, Y_grid = np.meshgrid(grid_ran, grid_ran)
+    grid_points = np.c_[X_grid.ravel(), Y_grid.ravel()]
+    Z1_grid = np.dot(grid_points, mlp.W1) + mlp.b1
+
+    # Apply activation function to the grid
+    if mlp.activation_fn == 'tanh':
+        A1_grid = np.tanh(Z1_grid)
+    elif mlp.activation_fn == 'relu':
+        A1_grid = np.maximum(0, Z1_grid)
+    elif mlp.activation_fn == 'sigmoid':
+        A1_grid = 1 / (1 + np.exp(-Z1_grid))
+
+    # Reshape for surface plotting
+    H1 = A1_grid[:, 0].reshape(X_grid.shape)
+    H2 = A1_grid[:, 1].reshape(X_grid.shape)
+
+    # Plot the 3D surface
+    ax_hidden.plot_surface(H1, H2, np.zeros_like(H1), alpha=0.25, color='lightgrey', edgecolor='darkgrey')
+    ax_hidden.set_title(f"Hidden Layer Features at Step {step_number}")
+
+    # Input Space Decision Boundary
+    x_min, x_max = X[:, 0].min() - 1, X[:, 0].max() + 1
+    y_min, y_max = X[:, 1].min() - 1, X[:, 1].max() + 1
     ax_input.set_xlim(x_min, x_max)
     ax_input.set_ylim(y_min, y_max)
 
-    xx, yy = np.meshgrid(np.linspace(x_min, x_max, 100), np.linspace(y_min, y_max, 100))
+    xx, yy = np.meshgrid(
+        np.linspace(x_min, x_max, 100),
+        np.linspace(y_min, y_max, 100)
+    )
     grid = np.c_[xx.ravel(), yy.ravel()]
     zz = mlp.forward(grid).reshape(xx.shape)
-    ax_input.contourf(xx, yy, zz, levels=20, cmap='bwr', alpha=0.6)
-    ax_input.scatter(X[:, 0], X[:, 1], c=y.ravel(), cmap='bwr', edgecolor='k')
-    ax_input.set_title("Input Space Decision Boundary")
 
-    # Gradient visualization
-    input_layer_size, hidden_layer_size, output_layer_size = mlp.W1.shape[0], mlp.W1.shape[1], mlp.W2.shape[1]
+    ax_input.contourf(xx, yy, zz, levels=[-1, 0, 0.5, 1], cmap='bwr', alpha=0.6)
+    ax_input.scatter(X[:, 0], X[:, 1], c=y.ravel(), cmap='bwr', edgecolor='k')
+    ax_input.set_title(f"Input Space Decision Boundary at Step {step_number}")
+
+    # Gradient Visualization
+    input_layer_size = mlp.W1.shape[0]
+    hidden_layer_size = mlp.W1.shape[1]
+    output_layer_size = mlp.W2.shape[1]
+
+    # Node placement
     nodes_input = np.array([[x, 0.8] for x in np.linspace(0.2, 0.8, input_layer_size)])
     nodes_hidden = np.array([[x, 0.5] for x in np.linspace(0.2, 0.8, hidden_layer_size)])
     nodes_output = np.array([[0.5, 0.2]])
 
-    for i in range(input_layer_size):
-        ax_gradient.add_patch(Circle(nodes_input[i], radius=0.03, color='blue'))
-    for i in range(hidden_layer_size):
-        ax_gradient.add_patch(Circle(nodes_hidden[i], radius=0.03, color='green'))
-    for i in range(output_layer_size):
-        ax_gradient.add_patch(Circle(nodes_output[i], radius=0.03, color='red'))
+    # Draw input layer nodes
+    for i, node in enumerate(nodes_input):
+        ax_gradient.add_patch(Circle(node, radius=0.03, color='red'))
+        ax_gradient.text(node[0], node[1] + 0.05, f"x{i + 1}", ha='center', va='bottom', fontsize=10)
 
+    # Draw hidden layer nodes
+    for i, node in enumerate(nodes_hidden):
+        ax_gradient.add_patch(Circle(node, radius=0.03, color='green'))
+        ax_gradient.text(node[0], node[1] + 0.05, f"h{i + 1}", ha='center', va='bottom', fontsize=10)
+
+    # Draw output layer node
+    for i, node in enumerate(nodes_output):
+        ax_gradient.add_patch(Circle(node, radius=0.03, color='blue'))
+        ax_gradient.text(node[0], node[1] - 0.05, f"y{i + 1}", ha='center', va='top', fontsize=10)
+
+    # Draw edges with gradient magnitudes
     for i in range(input_layer_size):
         for j in range(hidden_layer_size):
             gradient_magnitude = np.abs(mlp.gradients['dW1'][i, j])
@@ -141,8 +199,9 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
                 [nodes_input[i, 0], nodes_hidden[j, 0]],
                 [nodes_input[i, 1], nodes_hidden[j, 1]],
                 'k-',
-                linewidth=gradient_magnitude * 10
+                linewidth=gradient_magnitude * 100
             )
+
     for i in range(hidden_layer_size):
         for j in range(output_layer_size):
             gradient_magnitude = np.abs(mlp.gradients['dW2'][i, j])
@@ -150,27 +209,39 @@ def update(frame, mlp, ax_input, ax_hidden, ax_gradient, X, y):
                 [nodes_hidden[i, 0], nodes_output[j, 0]],
                 [nodes_hidden[i, 1], nodes_output[j, 1]],
                 'k-',
-                linewidth=gradient_magnitude * 10
+                linewidth=gradient_magnitude * 100
             )
+
     ax_gradient.axis('off')
-    ax_gradient.set_title("Gradient Visualization")
+    ax_gradient.set_title(f"Gradient Visualization at Step {step_number}")
+
+
+
 
 def visualize(activation, lr, step_num):
     X, y = generate_data()
+    if X.size == 0 or y.size == 0:
+        raise ValueError("Input data X or labels y are empty.")
+    
     mlp = MLP(input_dim=2, hidden_dim=3, output_dim=1, lr=lr, activation=activation)
 
-    matplotlib.use('agg')
+    matplotlib.use('agg')  # Use non-interactive backend for saving
     fig = plt.figure(figsize=(21, 7))
-    ax_hidden = fig.add_subplot(131)
+    ax_hidden = fig.add_subplot(131, projection='3d')
     ax_input = fig.add_subplot(132)
     ax_gradient = fig.add_subplot(133)
+
+    # Ensure frames is a valid positive integer
+    frames = max(1, step_num // 10)
 
     ani = FuncAnimation(
         fig,
         partial(update, mlp=mlp, ax_input=ax_input, ax_hidden=ax_hidden, ax_gradient=ax_gradient, X=X, y=y),
-        frames=step_num // 10,
+        frames=frames,
         repeat=False
     )
+
+    # Save animation using PillowWriter
     ani.save(os.path.join(result_dir, "visualize.gif"), writer='pillow', fps=10)
     plt.close()
 
